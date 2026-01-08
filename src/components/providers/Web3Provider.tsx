@@ -1,10 +1,21 @@
-import "@rainbow-me/rainbowkit/styles.css";
-import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
-import { WagmiProvider } from "wagmi";
+import { WagmiProvider, createConfig, http } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { config } from "@/lib/wagmi";
+import { forkedMainnet } from "@/lib/wagmi";
+import { injected, metaMask } from "wagmi/connectors";
 
 const queryClient = new QueryClient();
+
+// Create config for local development
+const config = createConfig({
+  chains: [forkedMainnet],
+  connectors: [
+    injected(),
+    metaMask(),
+  ],
+  transports: {
+    [forkedMainnet.id]: http(),
+  },
+});
 
 interface Web3ProviderProps {
   children: React.ReactNode;
@@ -14,16 +25,7 @@ export function Web3Provider({ children }: Web3ProviderProps) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider
-          theme={darkTheme({
-            accentColor: "#0ea5e9",
-            accentColorForeground: "white",
-            borderRadius: "medium",
-            fontStack: "system",
-          })}
-        >
-          {children}
-        </RainbowKitProvider>
+        {children}
       </QueryClientProvider>
     </WagmiProvider>
   );
