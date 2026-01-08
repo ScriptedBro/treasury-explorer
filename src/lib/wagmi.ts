@@ -1,5 +1,6 @@
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { createConfig, http } from "wagmi";
 import { defineChain } from "viem";
+import { injected, metaMask } from "wagmi/connectors";
 
 // Define the forked mainnet chain
 export const forkedMainnet = defineChain({
@@ -23,9 +24,13 @@ export const forkedMainnet = defineChain({
   },
 });
 
-export const config = getDefaultConfig({
-  appName: "PolicyTreasury",
-  projectId: "YOUR_WALLETCONNECT_PROJECT_ID", // Get from https://cloud.walletconnect.com
+export const config = createConfig({
   chains: [forkedMainnet],
-  ssr: false,
+  connectors: [
+    injected(),
+    metaMask(),
+  ],
+  transports: {
+    [forkedMainnet.id]: http(),
+  },
 });

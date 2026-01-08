@@ -95,7 +95,7 @@ export function useTreasuryFactory() {
         expiryTimestamp: BigInt(expiryTimestamp),
         migrationTarget,
       }],
-    });
+    } as any);
   };
 
   const resetFactory = () => {

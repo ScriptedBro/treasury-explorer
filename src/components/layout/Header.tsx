@@ -1,4 +1,4 @@
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Vault, LayoutDashboard, Plus, History } from "lucide-react";
