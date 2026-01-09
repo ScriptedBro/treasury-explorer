@@ -1,6 +1,6 @@
 import { createConfig, http } from "wagmi";
 import { defineChain } from "viem";
-import { injected, metaMask } from "wagmi/connectors";
+import { injected, metaMask, coinbaseWallet, safe } from "wagmi/connectors";
 
 // Define the forked mainnet chain
 export const forkedMainnet = defineChain({
@@ -13,7 +13,7 @@ export const forkedMainnet = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ["http://localhost:8545"], // Update with your forked mainnet RPC URL
+      http: ["http://localhost:8545"],
     },
   },
   blockExplorers: {
@@ -27,8 +27,10 @@ export const forkedMainnet = defineChain({
 export const config = createConfig({
   chains: [forkedMainnet],
   connectors: [
-    injected(),
+    injected({ shimDisconnect: true }),
     metaMask(),
+    coinbaseWallet({ appName: "Treasury Manager" }),
+    safe(),
   ],
   transports: {
     [forkedMainnet.id]: http(),
