@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useAccount } from "wagmi";
+import { useState, useEffect } from "react";
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,12 +19,18 @@ import {
   X, 
   CheckCircle,
   AlertCircle,
-  Rocket
+  Rocket,
+  Wallet,
+  Info,
+  AlertTriangle
 } from "lucide-react";
 import { useTreasuryFactory } from "@/hooks/useTreasuryFactory";
 import { useCreateTreasury, useAddWhitelistAddresses } from "@/hooks/useTreasuryDB";
-import { CONTRACT_ADDRESSES } from "@/lib/contracts/config";
+import { CONTRACT_ADDRESSES, TOKEN_CONFIG } from "@/lib/contracts/config";
+import { ERC20_ABI } from "@/lib/contracts/abis";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
+import { parseUnits, formatUnits } from "viem";
+import { toast } from "sonner";
 
 const PERIOD_OPTIONS = [
   { label: "No period (per-call limit)", value: "0" },
@@ -45,6 +51,7 @@ interface FormData {
   expiryTime: string;
   migrationTarget: string;
   whitelistAddresses: { address: string; label: string }[];
+  initialFunding: string;
 }
 
 const initialFormData: FormData = {
@@ -56,7 +63,10 @@ const initialFormData: FormData = {
   expiryTime: "",
   migrationTarget: "",
   whitelistAddresses: [{ address: "", label: "" }],
+  initialFunding: "",
 };
+
+type FundingStatus = "idle" | "checking" | "ready" | "transferring" | "success" | "skipped" | "error";
 
 export default function Deploy() {
   const navigate = useNavigate();
@@ -64,10 +74,68 @@ export default function Deploy() {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [error, setError] = useState<string | null>(null);
+  const [fundingStatus, setFundingStatus] = useState<FundingStatus>("idle");
+  const [fundingError, setFundingError] = useState<string | null>(null);
 
   const { createTreasury, isPending, isSuccess, deployedAddress, reset, error: contractError } = useTreasuryFactory();
   const createTreasuryDB = useCreateTreasury();
   const addWhitelist = useAddWhitelistAddresses();
+
+  // Read user's MNEE balance
+  const { data: mneeBalance, refetch: refetchBalance } = useReadContract({
+    address: CONTRACT_ADDRESSES.MNEE_TOKEN,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address,
+    },
+  });
+
+  // Transfer MNEE to treasury
+  const { 
+    writeContract: transferMnee, 
+    data: transferHash,
+    isPending: isTransferPending,
+    error: transferError,
+    reset: resetTransfer
+  } = useWriteContract();
+
+  const { 
+    isLoading: isTransferConfirming, 
+    isSuccess: isTransferSuccess 
+  } = useWaitForTransactionReceipt({
+    hash: transferHash,
+  });
+
+  // Handle transfer success
+  useEffect(() => {
+    if (isTransferSuccess) {
+      setFundingStatus("success");
+      toast.success("Treasury funded successfully!");
+    }
+  }, [isTransferSuccess]);
+
+  // Handle transfer error
+  useEffect(() => {
+    if (transferError) {
+      if (transferError.message?.includes("User rejected")) {
+        setFundingError("Transfer was rejected. You can fund the treasury later.");
+        setFundingStatus("skipped");
+      } else {
+        setFundingError(transferError.message || "Transfer failed. You can fund the treasury later.");
+        setFundingStatus("error");
+      }
+    }
+  }, [transferError]);
+
+  // Check balance when deployment succeeds
+  useEffect(() => {
+    if (isSuccess && deployedAddress && formData.initialFunding && parseFloat(formData.initialFunding) > 0) {
+      setFundingStatus("checking");
+      refetchBalance();
+    }
+  }, [isSuccess, deployedAddress, formData.initialFunding, refetchBalance]);
 
   const updateField = <K extends keyof FormData>(field: K, value: FormData[K]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -154,6 +222,37 @@ export default function Deploy() {
     });
   };
 
+  // Get user's formatted MNEE balance
+  const formattedBalance = mneeBalance 
+    ? formatUnits(mneeBalance as bigint, TOKEN_CONFIG.MNEE.decimals)
+    : "0";
+
+  const requestedFunding = formData.initialFunding ? parseFloat(formData.initialFunding) : 0;
+  const userBalance = parseFloat(formattedBalance);
+  const hasSufficientBalance = userBalance >= requestedFunding;
+
+  // Handle funding the treasury
+  const handleFundTreasury = () => {
+    if (!deployedAddress || !formData.initialFunding) return;
+    
+    setFundingStatus("transferring");
+    setFundingError(null);
+    
+    const amount = parseUnits(formData.initialFunding, TOKEN_CONFIG.MNEE.decimals);
+    
+    transferMnee({
+      address: CONTRACT_ADDRESSES.MNEE_TOKEN,
+      abi: ERC20_ABI,
+      functionName: "transfer",
+      args: [deployedAddress, amount],
+    } as any);
+  };
+
+  // Skip funding
+  const handleSkipFunding = () => {
+    setFundingStatus("skipped");
+  };
+
   // Save to database after successful deployment
   const handleSaveToDatabase = async () => {
     if (!deployedAddress || !address) return;
@@ -192,6 +291,16 @@ export default function Deploy() {
     }
   };
 
+  // Reset everything
+  const handleResetAll = () => {
+    reset();
+    resetTransfer();
+    setFormData(initialFormData);
+    setStep(1);
+    setFundingStatus("idle");
+    setFundingError(null);
+  };
+
   if (!isConnected) {
     return (
       <Layout>
@@ -208,32 +317,159 @@ export default function Deploy() {
     );
   }
 
+  // Success state with optional funding flow
   if (isSuccess && deployedAddress) {
+    const wantsFunding = formData.initialFunding && parseFloat(formData.initialFunding) > 0;
+    const showFundingPrompt = wantsFunding && fundingStatus === "checking";
+    const showFundingProgress = fundingStatus === "transferring" || isTransferPending || isTransferConfirming;
+    const showFundingComplete = fundingStatus === "success" || fundingStatus === "skipped" || fundingStatus === "error" || !wantsFunding;
+
     return (
       <Layout>
         <Card className="max-w-lg mx-auto">
-          <CardContent className="py-16 text-center">
-            <div className="rounded-full bg-green-500/10 p-4 w-fit mx-auto mb-4">
-              <CheckCircle className="h-12 w-12 text-green-500" />
+          <CardContent className="py-12">
+            {/* Deployment Success Header */}
+            <div className="text-center mb-6">
+              <div className="rounded-full bg-green-500/10 p-4 w-fit mx-auto mb-4">
+                <CheckCircle className="h-12 w-12 text-green-500" />
+              </div>
+              <CardTitle className="mb-2">Treasury Deployed!</CardTitle>
+              <CardDescription className="mb-4">
+                Your new PolicyTreasury has been successfully deployed
+              </CardDescription>
+              <code className="block text-sm bg-muted p-3 rounded-lg font-mono">
+                {deployedAddress}
+              </code>
             </div>
-            <CardTitle className="mb-2">Treasury Deployed!</CardTitle>
-            <CardDescription className="mb-4">
-              Your new PolicyTreasury has been successfully deployed
-            </CardDescription>
-            <code className="block text-sm bg-muted p-3 rounded-lg mb-6 font-mono">
-              {deployedAddress}
-            </code>
-            <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={() => { reset(); setFormData(initialFormData); setStep(1); }}>
-                Deploy Another
-              </Button>
-              <Button onClick={handleSaveToDatabase} disabled={createTreasuryDB.isPending}>
-                {createTreasuryDB.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                View Treasury
-              </Button>
-            </div>
+
+            <Separator className="my-6" />
+
+            {/* Funding Section */}
+            {showFundingPrompt && (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <Wallet className="h-8 w-8 mx-auto mb-2 text-primary" />
+                  <h3 className="font-semibold mb-1">Fund Your Treasury</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    You requested to fund this treasury with {formData.initialFunding} MNEE
+                  </p>
+                </div>
+
+                <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Your MNEE Balance</span>
+                    <span className="font-medium">{parseFloat(formattedBalance).toLocaleString()} MNEE</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Requested Funding</span>
+                    <span className="font-medium">{parseFloat(formData.initialFunding).toLocaleString()} MNEE</span>
+                  </div>
+                </div>
+
+                {!hasSufficientBalance && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Insufficient balance. You have {parseFloat(formattedBalance).toLocaleString()} MNEE but requested {parseFloat(formData.initialFunding).toLocaleString()} MNEE. 
+                      You can fund the treasury later when you have more MNEE.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={handleSkipFunding}
+                  >
+                    Skip for Now
+                  </Button>
+                  <Button 
+                    className="flex-1"
+                    onClick={handleFundTreasury}
+                    disabled={!hasSufficientBalance}
+                  >
+                    <Wallet className="mr-2 h-4 w-4" />
+                    Fund Treasury
+                  </Button>
+                </div>
+
+                <p className="text-xs text-center text-muted-foreground">
+                  Policies can exist without funds. Funding is optional and can happen later.
+                </p>
+              </div>
+            )}
+
+            {/* Funding in Progress */}
+            {showFundingProgress && (
+              <div className="text-center space-y-4">
+                <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary" />
+                <div>
+                  <h3 className="font-semibold mb-1">Transferring MNEE...</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Please confirm the transaction in your wallet
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Funding Complete / Skipped / Error */}
+            {showFundingComplete && (
+              <div className="space-y-4">
+                {fundingStatus === "success" && (
+                  <Alert className="border-green-500/50 bg-green-500/10">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <AlertDescription className="text-green-700 dark:text-green-300">
+                      Treasury funded with {formData.initialFunding} MNEE successfully!
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {fundingStatus === "skipped" && fundingError && (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>{fundingError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {fundingStatus === "skipped" && !fundingError && wantsFunding && (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      Funding skipped. You can fund the treasury later from the treasury details page.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {fundingStatus === "error" && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{fundingError}</AlertDescription>
+                  </Alert>
+                )}
+
+                {!wantsFunding && (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      No initial funding was specified. Policies can exist without funds — you can fund the treasury at any time.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex gap-3 justify-center pt-2">
+                  <Button variant="outline" onClick={handleResetAll}>
+                    Deploy Another
+                  </Button>
+                  <Button onClick={handleSaveToDatabase} disabled={createTreasuryDB.isPending}>
+                    {createTreasuryDB.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    View Treasury
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </Layout>
@@ -364,6 +600,33 @@ export default function Deploy() {
                   />
                 </div>
               </div>
+
+              <Separator />
+
+              {/* Initial Funding */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="initialFunding">Initial Funding (Optional)</Label>
+                  <Badge variant="secondary" className="text-xs">Optional</Badge>
+                </div>
+                <div className="relative">
+                  <Input
+                    id="initialFunding"
+                    type="number"
+                    step="any"
+                    placeholder="0"
+                    value={formData.initialFunding}
+                    onChange={(e) => updateField("initialFunding", e.target.value)}
+                    className="pr-16"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    MNEE
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Policies can exist without funds. You can fund the treasury now or at any time later.
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -484,6 +747,14 @@ export default function Deploy() {
                       : "No expiry"}
                   </span>
                 </div>
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-muted-foreground">Initial Funding</span>
+                  <span className="font-medium">
+                    {formData.initialFunding && parseFloat(formData.initialFunding) > 0
+                      ? `${formData.initialFunding} MNEE`
+                      : "None (can fund later)"}
+                  </span>
+                </div>
                 <div className="py-2 border-b">
                   <span className="text-muted-foreground block mb-2">Whitelist</span>
                   <div className="flex flex-wrap gap-2">
@@ -508,6 +779,16 @@ export default function Deploy() {
                   All parameters are immutable after deployment. Double-check everything before proceeding.
                 </AlertDescription>
               </Alert>
+
+              {formData.initialFunding && parseFloat(formData.initialFunding) > 0 && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    After deployment, you'll be prompted to transfer {formData.initialFunding} MNEE to the treasury. 
+                    This is optional — the treasury will be created regardless of funding.
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         )}
