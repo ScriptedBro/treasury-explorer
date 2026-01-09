@@ -1,73 +1,73 @@
-# Welcome to your Lovable project
+# MNEE Treasury Manager
 
-## Project info
+A web application for managing and deploying MNEE token treasuries with spending limits, whitelists, and migration capabilities.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Setup Instructions
 
-## How can I edit this code?
+### 1. Contract Configuration
 
-There are several ways of editing your application.
+Update the contract addresses in `src/lib/contracts/config.ts`:
 
-**Use Lovable**
+```typescript
+export const CONTRACT_ADDRESSES = {
+  // Replace with your deployed TreasuryFactory address
+  TREASURY_FACTORY: "0xYourTreasuryFactoryAddress",
+  // Replace with your MNEE Token address
+  MNEE_TOKEN: "0xYourMNEETokenAddress",
+} as const;
+```
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### 2. Network Configuration
 
-Changes made via Lovable will be committed automatically to this repo.
+Update the RPC URL in `src/lib/contracts/config.ts` to point to your network:
 
-**Use your preferred IDE**
+```typescript
+export const FORKED_MAINNET_CHAIN = {
+  // ...
+  rpcUrls: {
+    default: {
+      http: ["https://your-rpc-url-here"],
+    },
+  },
+  // ...
+} as const;
+```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### 3. Token Configuration
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+If your token has different decimals or symbol, update in `src/lib/contracts/config.ts`:
 
-Follow these steps:
+```typescript
+export const TOKEN_CONFIG = {
+  MNEE: {
+    symbol: "MNEE",
+    decimals: 18, // Update if different
+    name: "MNEE Token",
+  },
+} as const;
+```
+
+## Development
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Install dependencies
+npm install
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Technologies
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- React + Vite + TypeScript
+- Tailwind CSS + shadcn/ui
+- wagmi + viem for Web3
+- Supabase for backend
 
-**Use GitHub Codespaces**
+## Features
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- Deploy new treasuries via TreasuryFactory
+- Manage spending limits and periods
+- Whitelist management
+- Migration support
+- Transaction history tracking
