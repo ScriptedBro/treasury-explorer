@@ -65,7 +65,7 @@ export default function Deploy() {
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [error, setError] = useState<string | null>(null);
 
-  const { createTreasury, isPending, isSuccess, deployedAddress, reset } = useTreasuryFactory();
+  const { createTreasury, isPending, isSuccess, deployedAddress, reset, error: contractError } = useTreasuryFactory();
   const createTreasuryDB = useCreateTreasury();
   const addWhitelist = useAddWhitelistAddresses();
 
@@ -512,11 +512,25 @@ export default function Deploy() {
           </Card>
         )}
 
-        {/* Error */}
+        {/* Validation Error */}
         {error && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Contract/Wallet Error */}
+        {contractError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {contractError.message?.includes("User rejected")
+                ? "Transaction was rejected by user"
+                : contractError.message?.includes("insufficient funds")
+                ? "Insufficient funds for gas"
+                : contractError.message || "Transaction failed. Please try again."}
+            </AlertDescription>
           </Alert>
         )}
 
