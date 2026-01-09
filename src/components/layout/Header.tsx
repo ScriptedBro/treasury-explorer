@@ -1,4 +1,5 @@
 import { ConnectButton } from "@/components/wallet/ConnectButton";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Vault, LayoutDashboard, Plus, History } from "lucide-react";
@@ -46,7 +47,10 @@ export function Header() {
           </nav>
         </div>
         
-        <ConnectButton />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <ConnectButton />
+        </div>
       </div>
     </header>
   );
