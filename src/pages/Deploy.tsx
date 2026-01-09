@@ -39,7 +39,6 @@ const PERIOD_OPTIONS = [
 interface FormData {
   name: string;
   description: string;
-  tokenAddress: string;
   maxSpendPerPeriod: string;
   periodSeconds: string;
   expiryDate: string;
@@ -51,7 +50,6 @@ interface FormData {
 const initialFormData: FormData = {
   name: "",
   description: "",
-  tokenAddress: CONTRACT_ADDRESSES.MNEE_TOKEN,
   maxSpendPerPeriod: "",
   periodSeconds: "86400",
   expiryDate: "",
@@ -103,10 +101,6 @@ export default function Deploy() {
     setError(null);
 
     if (currentStep === 1) {
-      if (!formData.tokenAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-        setError("Please enter a valid token address");
-        return false;
-      }
       if (!formData.maxSpendPerPeriod || parseFloat(formData.maxSpendPerPeriod) <= 0) {
         setError("Please enter a valid max spend amount");
         return false;
@@ -152,8 +146,6 @@ export default function Deploy() {
       .map((w) => w.address as `0x${string}`);
 
     createTreasury({
-      token: formData.tokenAddress as `0x${string}`,
-      owner: address,
       maxSpendPerPeriod: formData.maxSpendPerPeriod,
       periodSeconds: parseInt(formData.periodSeconds),
       whitelist,
@@ -174,7 +166,7 @@ export default function Deploy() {
       const treasury = await createTreasuryDB.mutateAsync({
         address: deployedAddress,
         owner_address: address,
-        token_address: formData.tokenAddress,
+        token_address: CONTRACT_ADDRESSES.MNEE_TOKEN,
         max_spend_per_period: formData.maxSpendPerPeriod,
         period_seconds: parseInt(formData.periodSeconds),
         expiry_timestamp: expiryTimestamp,
@@ -291,26 +283,14 @@ export default function Deploy() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Treasury Name (Optional)</Label>
-                  <Input
-                    id="name"
-                    placeholder="My Treasury"
-                    value={formData.name}
-                    onChange={(e) => updateField("name", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="token">Token Address</Label>
-                  <Input
-                    id="token"
-                    placeholder="0x..."
-                    value={formData.tokenAddress}
-                    onChange={(e) => updateField("tokenAddress", e.target.value)}
-                    className="font-mono"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="name">Treasury Name (Optional)</Label>
+                <Input
+                  id="name"
+                  placeholder="My Treasury"
+                  value={formData.name}
+                  onChange={(e) => updateField("name", e.target.value)}
+                />
               </div>
 
               <div className="space-y-2">
@@ -484,7 +464,7 @@ export default function Deploy() {
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-muted-foreground">Token</span>
-                  <code className="text-sm">{formData.tokenAddress.slice(0, 10)}...</code>
+                  <span className="font-medium">MNEE (hardcoded)</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span className="text-muted-foreground">Max Spend/Period</span>
