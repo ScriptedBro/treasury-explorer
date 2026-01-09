@@ -46,7 +46,15 @@ export function ConnectButton() {
           <DropdownMenuItem
             key={connector.uid}
             onClick={() => connect({ connector })}
+            className="gap-2"
           >
+            {connector.icon && (
+              <img 
+                src={connector.icon} 
+                alt={connector.name} 
+                className="h-4 w-4"
+              />
+            )}
             {connector.name}
           </DropdownMenuItem>
         ))}
