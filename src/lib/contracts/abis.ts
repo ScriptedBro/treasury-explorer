@@ -144,11 +144,16 @@ export const TREASURY_FACTORY_ABI = [
     type: "event",
   },
   {
+    inputs: [],
+    name: "MNEE",
+    outputs: [{ internalType: "address", name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
     inputs: [
       {
         components: [
-          { internalType: "address", name: "token", type: "address" },
-          { internalType: "address", name: "owner", type: "address" },
           { internalType: "uint256", name: "maxSpendPerPeriod", type: "uint256" },
           { internalType: "uint256", name: "periodSeconds", type: "uint256" },
           { internalType: "address[]", name: "whitelist", type: "address[]" },

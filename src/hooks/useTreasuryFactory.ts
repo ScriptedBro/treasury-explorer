@@ -7,8 +7,6 @@ import { toast } from "sonner";
 import { decodeEventLog } from "viem";
 
 interface CreateTreasuryParams {
-  token: `0x${string}`;
-  owner: `0x${string}`;
   maxSpendPerPeriod: string;
   periodSeconds: number;
   whitelist: `0x${string}`[];
@@ -71,8 +69,6 @@ export function useTreasuryFactory() {
   }, [isSuccess, receipt]);
 
   const createTreasury = ({
-    token,
-    owner,
     maxSpendPerPeriod,
     periodSeconds,
     whitelist,
@@ -87,8 +83,6 @@ export function useTreasuryFactory() {
       abi: TREASURY_FACTORY_ABI,
       functionName: "createTreasury",
       args: [{
-        token,
-        owner,
         maxSpendPerPeriod: maxSpendBigInt,
         periodSeconds: BigInt(periodSeconds),
         whitelist,
