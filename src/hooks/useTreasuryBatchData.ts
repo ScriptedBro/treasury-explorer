@@ -1,4 +1,4 @@
-import { useReadContracts } from "wagmi";
+import { useReadContract } from "wagmi";
 import { POLICY_TREASURY_ABI } from "@/lib/contracts/abis";
 import { formatUnits } from "viem";
 import type { Treasury } from "@/hooks/useTreasuryDB";
@@ -12,47 +12,55 @@ interface TreasuryOnChainData {
   periodProgress: number;
 }
 
+// Hook for a single treasury's on-chain data
+export function useSingleTreasuryData(treasuryAddress?: string) {
+  const { data: balanceData, isLoading: balanceLoading } = useReadContract({
+    address: treasuryAddress as `0x${string}`,
+    abi: POLICY_TREASURY_ABI,
+    functionName: 'balance',
+    query: { enabled: !!treasuryAddress },
+  });
+
+  const { data: spentData, isLoading: spentLoading } = useReadContract({
+    address: treasuryAddress as `0x${string}`,
+    abi: POLICY_TREASURY_ABI,
+    functionName: 'spentThisPeriod',
+    query: { enabled: !!treasuryAddress },
+  });
+
+  const { data: maxSpendData, isLoading: maxSpendLoading } = useReadContract({
+    address: treasuryAddress as `0x${string}`,
+    abi: POLICY_TREASURY_ABI,
+    functionName: 'maxSpendPerPeriod',
+    query: { enabled: !!treasuryAddress },
+  });
+
+  const balanceRaw = (balanceData as bigint) ?? 0n;
+  const spentRaw = (spentData as bigint) ?? 0n;
+  const maxSpendRaw = (maxSpendData as bigint) ?? 0n;
+
+  const periodProgress = maxSpendRaw > 0n ? Number((spentRaw * 100n) / maxSpendRaw) : 0;
+
+  const data: TreasuryOnChainData | undefined = treasuryAddress ? {
+    address: treasuryAddress,
+    balance: formatUnits(balanceRaw, 18),
+    balanceRaw,
+    spentThisPeriod: formatUnits(spentRaw, 18),
+    maxSpendPerPeriod: formatUnits(maxSpendRaw, 18),
+    periodProgress,
+  } : undefined;
+
+  return {
+    data,
+    isLoading: balanceLoading || spentLoading || maxSpendLoading,
+  };
+}
+
+// For batch data, we now use individual hooks per treasury via a component wrapper
 export function useTreasuryBatchData(treasuries: Treasury[] | undefined) {
-  const contracts: any[] = [];
-  
-  treasuries?.forEach((treasury) => {
-    contracts.push(
-      { address: treasury.address as `0x${string}`, abi: POLICY_TREASURY_ABI, functionName: 'balance' },
-      { address: treasury.address as `0x${string}`, abi: POLICY_TREASURY_ABI, functionName: 'spentThisPeriod' },
-      { address: treasury.address as `0x${string}`, abi: POLICY_TREASURY_ABI, functionName: 'maxSpendPerPeriod' }
-    );
-  });
-
-  const { data, isLoading, refetch } = useReadContracts({
-    contracts,
-    query: { enabled: contracts.length > 0 },
-  });
-
+  // This hook now returns a placeholder - use TreasuryCardWithData component instead
+  // which handles individual data fetching per card
   const treasuryDataMap = new Map<string, TreasuryOnChainData>();
   
-  if (data && treasuries) {
-    treasuries.forEach((treasury, index) => {
-      const baseIndex = index * 3;
-      const balanceResult = data[baseIndex];
-      const spentResult = data[baseIndex + 1];
-      const maxSpendResult = data[baseIndex + 2];
-      
-      const balanceRaw = balanceResult?.status === 'success' ? (balanceResult.result as bigint) : 0n;
-      const spentRaw = spentResult?.status === 'success' ? (spentResult.result as bigint) : 0n;
-      const maxSpendRaw = maxSpendResult?.status === 'success' ? (maxSpendResult.result as bigint) : 0n;
-      
-      const periodProgress = maxSpendRaw > 0n ? Number((spentRaw * 100n) / maxSpendRaw) : 0;
-      
-      treasuryDataMap.set(treasury.address.toLowerCase(), {
-        address: treasury.address,
-        balance: formatUnits(balanceRaw, 18),
-        balanceRaw,
-        spentThisPeriod: formatUnits(spentRaw, 18),
-        maxSpendPerPeriod: formatUnits(maxSpendRaw, 18),
-        periodProgress,
-      });
-    });
-  }
-
-  return { data: treasuryDataMap, isLoading, refetch };
+  return { data: treasuryDataMap, isLoading: false, refetch: () => {} };
 }
