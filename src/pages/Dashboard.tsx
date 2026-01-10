@@ -1,15 +1,34 @@
+import { useState, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
 import { Layout } from "@/components/layout/Layout";
 import { TreasuryCard } from "@/components/treasury/TreasuryCard";
-import { useTreasuries } from "@/hooks/useTreasuryDB";
+import { useTreasuries, useTreasuryTransactions } from "@/hooks/useTreasuryDB";
+import { useTreasuryBatchData } from "@/hooks/useTreasuryBatchData";
+import { getTreasuryStatus, type TreasuryStatus } from "@/lib/treasury-status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Vault, TrendingUp, Clock, Wallet } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus, Vault, TrendingUp, Clock, Wallet, CheckCircle2, AlertTriangle, ArrowRightLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
-function DashboardStats({ treasuryCount }: { treasuryCount: number }) {
+const STATUS_FILTERS = [
+  { value: 'all', label: 'All', icon: Vault },
+  { value: 'active', label: 'Active', icon: CheckCircle2 },
+  { value: 'unfunded', label: 'Unfunded', icon: Wallet },
+  { value: 'exhausted', label: 'Exhausted', icon: AlertTriangle },
+  { value: 'expired', label: 'Expired', icon: Clock },
+  { value: 'migrated', label: 'Migrated', icon: ArrowRightLeft },
+] as const;
+
+interface DashboardStatsProps {
+  treasuryCount: number;
+  activeCount: number;
+  totalBalance: string;
+}
+
+function DashboardStats({ treasuryCount, activeCount, totalBalance }: DashboardStatsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-3">
       <Card>
@@ -19,7 +38,7 @@ function DashboardStats({ treasuryCount }: { treasuryCount: number }) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{treasuryCount}</div>
-          <p className="text-xs text-muted-foreground">Active treasuries under your control</p>
+          <p className="text-xs text-muted-foreground">Treasuries under your control</p>
         </CardContent>
       </Card>
       <Card>
@@ -28,18 +47,20 @@ function DashboardStats({ treasuryCount }: { treasuryCount: number }) {
           <TrendingUp className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">--</div>
+          <div className="text-2xl font-bold">
+            {parseFloat(totalBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })} MNEE
+          </div>
           <p className="text-xs text-muted-foreground">Combined treasury balances</p>
         </CardContent>
       </Card>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Active Periods</CardTitle>
-          <Clock className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm font-medium">Active Treasuries</CardTitle>
+          <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{treasuryCount}</div>
-          <p className="text-xs text-muted-foreground">Treasuries with active spending periods</p>
+          <div className="text-2xl font-bold">{activeCount}</div>
+          <p className="text-xs text-muted-foreground">Funded and ready for spending</p>
         </CardContent>
       </Card>
     </div>
@@ -108,6 +129,96 @@ function ConnectWalletPrompt() {
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
   const { data: treasuries, isLoading } = useTreasuries(address);
+  const { data: batchData, isLoading: isBatchLoading } = useTreasuryBatchData(treasuries);
+  const { data: allTransactions } = useTreasuryTransactions();
+  
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Calculate status for each treasury and aggregate stats
+  const { treasuriesWithStatus, statusCounts, totalBalance, activeCount } = useMemo(() => {
+    if (!treasuries) {
+      return { 
+        treasuriesWithStatus: [], 
+        statusCounts: {} as Record<string, number>,
+        totalBalance: "0",
+        activeCount: 0
+      };
+    }
+
+    // Build a set of treasury IDs that have transactions
+    const treasuryTransactionMap = new Map<string, { hasTransactions: boolean; hasMigration: boolean }>();
+    
+    if (allTransactions) {
+      allTransactions.forEach((tx) => {
+        const existing = treasuryTransactionMap.get(tx.treasury_id) || { hasTransactions: false, hasMigration: false };
+        existing.hasTransactions = true;
+        if (tx.event_type === 'migrate') {
+          existing.hasMigration = true;
+        }
+        treasuryTransactionMap.set(tx.treasury_id, existing);
+      });
+    }
+
+    let totalBalanceNum = 0;
+    let activeNum = 0;
+    const counts: Record<string, number> = {
+      all: 0,
+      active: 0,
+      unfunded: 0,
+      exhausted: 0,
+      expired: 0,
+      migrated: 0,
+    };
+
+    const withStatus = treasuries.map((treasury) => {
+      const onChainData = batchData.get(treasury.address.toLowerCase());
+      const txInfo = treasuryTransactionMap.get(treasury.id) || { hasTransactions: false, hasMigration: false };
+      
+      const balanceRaw = onChainData?.balanceRaw ?? 0n;
+      const balance = onChainData?.balance ?? "0";
+      
+      totalBalanceNum += parseFloat(balance);
+
+      const status = getTreasuryStatus({
+        balance: balanceRaw,
+        expiryTimestamp: treasury.expiry_timestamp || 0,
+        hasTransactions: txInfo.hasTransactions,
+        hasMigration: txInfo.hasMigration,
+      });
+
+      counts.all++;
+      counts[status]++;
+      
+      if (status === 'active') {
+        activeNum++;
+      }
+
+      return {
+        treasury,
+        balance,
+        spentThisPeriod: onChainData?.spentThisPeriod ?? "0",
+        periodProgress: onChainData?.periodProgress ?? 0,
+        status,
+      };
+    });
+
+    return {
+      treasuriesWithStatus: withStatus,
+      statusCounts: counts,
+      totalBalance: totalBalanceNum.toString(),
+      activeCount: activeNum,
+    };
+  }, [treasuries, batchData, allTransactions]);
+
+  // Filter treasuries by status
+  const filteredTreasuries = useMemo(() => {
+    if (statusFilter === 'all') {
+      return treasuriesWithStatus;
+    }
+    return treasuriesWithStatus.filter((t) => t.status === statusFilter);
+  }, [treasuriesWithStatus, statusFilter]);
+
+  const isDataLoading = isLoading || isBatchLoading;
 
   return (
     <Layout>
@@ -135,25 +246,62 @@ export default function Dashboard() {
         ) : (
           <>
             {/* Stats */}
-            <DashboardStats treasuryCount={treasuries?.length || 0} />
+            <DashboardStats 
+              treasuryCount={treasuries?.length || 0} 
+              activeCount={activeCount}
+              totalBalance={totalBalance}
+            />
 
             {/* Treasury List */}
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold">Your Treasuries</h2>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl font-semibold">Your Treasuries</h2>
+                
+                {/* Status Filter */}
+                <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+                  <TabsList className="h-auto flex-wrap">
+                    {STATUS_FILTERS.map((filter) => (
+                      <TabsTrigger 
+                        key={filter.value} 
+                        value={filter.value}
+                        className="text-xs"
+                      >
+                        {filter.label}
+                        {statusCounts[filter.value] > 0 && (
+                          <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs">
+                            {statusCounts[filter.value]}
+                          </span>
+                        )}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              </div>
               
-              {isLoading ? (
+              {isDataLoading ? (
                 <LoadingSkeleton />
-              ) : treasuries?.length === 0 ? (
-                <EmptyState />
+              ) : filteredTreasuries.length === 0 ? (
+                statusFilter === 'all' ? (
+                  <EmptyState />
+                ) : (
+                  <Card className="border-dashed">
+                    <CardContent className="py-8 text-center">
+                      <p className="text-muted-foreground">
+                        No {statusFilter} treasuries found.
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
               ) : (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {treasuries?.map((treasury) => (
+                  {filteredTreasuries.map(({ treasury, balance, spentThisPeriod, periodProgress, status }) => (
                     <TreasuryCard
                       key={treasury.id}
                       treasury={treasury}
-                      balance="0"
-                      spentThisPeriod="0"
-                      periodProgress={0}
+                      balance={balance}
+                      spentThisPeriod={spentThisPeriod}
+                      periodProgress={periodProgress}
+                      status={status}
                     />
                   ))}
                 </div>

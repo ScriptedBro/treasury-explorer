@@ -5,8 +5,11 @@ export const CONTRACT_ADDRESSES = {
   // TreasuryFactory contract address (deploy this first)
   TREASURY_FACTORY: "0x0000000000000000000000000000000000000000" as `0x${string}`,
   // MNEE Token contract address
-  MNEE_TOKEN: "0x0000000000000000000000000000000000000000" as `0x${string}`,
+  MNEE_TOKEN: "0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF" as `0x${string}`,
 } as const;
+
+// Direct export for convenience
+export const MNEE_TOKEN_ADDRESS = CONTRACT_ADDRESSES.MNEE_TOKEN;
 
 // Chain configuration for forked Ethereum mainnet
 export const FORKED_MAINNET_CHAIN = {

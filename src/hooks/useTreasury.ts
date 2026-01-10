@@ -1,15 +1,18 @@
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { POLICY_TREASURY_ABI } from "@/lib/contracts/abis";
 import { formatUnits } from "viem";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { toast } from "sonner";
+import { getTreasuryStatus, type TreasuryStatus } from "@/lib/treasury-status";
 
 interface UseTreasuryProps {
   address: `0x${string}`;
   tokenDecimals?: number;
+  hasTransactions?: boolean;
+  hasMigration?: boolean;
 }
 
-export function useTreasury({ address, tokenDecimals = 18 }: UseTreasuryProps) {
+export function useTreasury({ address, tokenDecimals = 18, hasTransactions = false, hasMigration = false }: UseTreasuryProps) {
   // Read treasury data
   const { data: balance, refetch: refetchBalance } = useReadContract({
     address,
@@ -134,6 +137,16 @@ export function useTreasury({ address, tokenDecimals = 18 }: UseTreasuryProps) {
     ? Number((spentThisPeriod * 100n) / maxSpendPerPeriod)
     : 0;
 
+  // Calculate treasury status
+  const status: TreasuryStatus = useMemo(() => {
+    return getTreasuryStatus({
+      balance: balance ?? 0n,
+      expiryTimestamp: expiryTimestamp ? Number(expiryTimestamp) : 0,
+      hasTransactions,
+      hasMigration,
+    });
+  }, [balance, expiryTimestamp, hasTransactions, hasMigration]);
+
   return {
     // Data
     balance: balance ? formatUnits(balance, tokenDecimals) : "0",
@@ -150,6 +163,7 @@ export function useTreasury({ address, tokenDecimals = 18 }: UseTreasuryProps) {
     remainingAllowance: remainingAllowance ? formatUnits(remainingAllowance, tokenDecimals) : "0",
     remainingAllowanceRaw: remainingAllowance,
     periodProgress,
+    status,
     
     // Actions
     spend,

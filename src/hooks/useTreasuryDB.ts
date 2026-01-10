@@ -86,6 +86,41 @@ export function useTreasuryTransactions(treasuryId?: string) {
   });
 }
 
+// Check if treasury has any transactions
+export function useTreasuryHasTransactions(treasuryId?: string) {
+  return useQuery({
+    queryKey: ["treasury-has-transactions", treasuryId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("treasury_transactions")
+        .select("*", { count: 'exact', head: true })
+        .eq("treasury_id", treasuryId || "");
+      
+      if (error) throw error;
+      return (count || 0) > 0;
+    },
+    enabled: !!treasuryId,
+  });
+}
+
+// Check if treasury has migration event
+export function useTreasuryHasMigration(treasuryId?: string) {
+  return useQuery({
+    queryKey: ["treasury-has-migration", treasuryId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("treasury_transactions")
+        .select("*", { count: 'exact', head: true })
+        .eq("treasury_id", treasuryId || "")
+        .eq("event_type", "migrate");
+      
+      if (error) throw error;
+      return (count || 0) > 0;
+    },
+    enabled: !!treasuryId,
+  });
+}
+
 // Fetch all transactions (for history page)
 export function useAllTransactions(ownerAddress?: string) {
   return useQuery({
