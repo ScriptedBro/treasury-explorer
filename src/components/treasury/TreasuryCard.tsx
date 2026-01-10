@@ -1,28 +1,28 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Wallet, Clock, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Wallet, Clock, ArrowRight, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import type { Treasury } from "@/hooks/useTreasuryDB";
+import { StatusBadge } from "./StatusBadge";
+import { type TreasuryStatus } from "@/lib/treasury-status";
 
 interface TreasuryCardProps {
   treasury: Treasury;
   balance?: string;
   spentThisPeriod?: string;
   periodProgress?: number;
+  status?: TreasuryStatus;
 }
 
 export function TreasuryCard({ 
   treasury, 
   balance = "0", 
   spentThisPeriod = "0",
-  periodProgress = 0 
+  periodProgress = 0,
+  status = 'unfunded'
 }: TreasuryCardProps) {
-  const isExpired = treasury.expiry_timestamp 
-    ? Date.now() / 1000 > treasury.expiry_timestamp 
-    : false;
-
   const expiryDate = treasury.expiry_timestamp
     ? new Date(treasury.expiry_timestamp * 1000)
     : null;
@@ -35,9 +35,13 @@ export function TreasuryCard({
     ? `${treasury.period_seconds / 3600}h period`
     : `${treasury.period_seconds / 86400}d period`;
 
+  const isUnfunded = status === 'unfunded';
+  const isExpired = status === 'expired';
+  const isExhausted = status === 'exhausted';
+
   return (
     <Link to={`/treasury/${treasury.address}`}>
-      <Card className="group hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer">
+      <Card className="group hover:border-primary/50 hover:shadow-lg transition-all cursor-pointer h-full">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
@@ -48,9 +52,7 @@ export function TreasuryCard({
                 {treasury.address.slice(0, 10)}...{treasury.address.slice(-8)}
               </p>
             </div>
-            <Badge variant={isExpired ? "destructive" : "secondary"}>
-              {isExpired ? "Expired" : "Active"}
-            </Badge>
+            <StatusBadge status={status} size="sm" />
           </div>
         </CardHeader>
         
@@ -60,7 +62,7 @@ export function TreasuryCard({
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
               <Wallet className="h-5 w-5 text-primary" />
             </div>
-            <div>
+            <div className="flex-1">
               <p className="text-sm text-muted-foreground">Balance</p>
               <p className="text-xl font-semibold">
                 {parseFloat(balance).toLocaleString(undefined, { maximumFractionDigits: 4 })} MNEE
@@ -68,16 +70,35 @@ export function TreasuryCard({
             </div>
           </div>
 
-          {/* Period Progress */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">{periodLabel}</span>
-              <span className="font-medium">
-                {parseFloat(spentThisPeriod).toLocaleString()} / {parseFloat(treasury.max_spend_per_period).toLocaleString()}
+          {/* CTA for unfunded treasuries */}
+          {isUnfunded && (
+            <Button variant="outline" size="sm" className="w-full" asChild>
+              <span>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Funds to Activate
               </span>
+            </Button>
+          )}
+
+          {/* Exhausted warning */}
+          {isExhausted && (
+            <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-md p-2 text-center">
+              Balance depleted - add funds to continue spending
             </div>
-            <Progress value={periodProgress} className="h-2" />
-          </div>
+          )}
+
+          {/* Period Progress - only show if not unfunded */}
+          {!isUnfunded && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">{periodLabel}</span>
+                <span className="font-medium">
+                  {parseFloat(spentThisPeriod).toLocaleString()} / {parseFloat(treasury.max_spend_per_period).toLocaleString()}
+                </span>
+              </div>
+              <Progress value={periodProgress} className="h-2" />
+            </div>
+          )}
 
           {/* Expiry */}
           {expiryDate && !isExpired && (
