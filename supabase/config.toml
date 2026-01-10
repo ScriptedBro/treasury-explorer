@@ -1,1 +1,4 @@
 project_id = "umhzifadcfvftwjlcngq"
+
+[functions.sync-treasury-events]
+verify_jwt = false
